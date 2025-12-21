@@ -11,21 +11,20 @@ let player = {
 };
 
 const sensitivity = 0.005;
-const moveSpeed = 0.1;
+const moveSpeed = 0.12;
 let moveInput = { x: 0, y: 0 };
 
-// --- GESTION TACTILE (JOYSTICK & REGARD) ---
+// --- INTERFACE TACTILE ---
 const joyZone = document.getElementById('joystick-zone');
 const joyStick = document.getElementById('joystick');
 let lastTouchX = null, lastTouchY = null;
 
-// Joystick (Partie gauche)
 joyZone.addEventListener('touchmove', (e) => {
     e.preventDefault();
     let rect = joyZone.getBoundingClientRect();
-    let touch = e.touches[0];
-    let dx = (touch.clientX - (rect.left + 60)) / 60;
-    let dy = (touch.clientY - (rect.top + 60)) / 60;
+    let t = e.touches[0];
+    let dx = (t.clientX - (rect.left + 60)) / 60;
+    let dy = (t.clientY - (rect.top + 60)) / 60;
     let dist = Math.min(1, Math.sqrt(dx*dx + dy*dy));
     let angle = Math.atan2(dy, dx);
     moveInput.x = Math.cos(angle) * dist;
@@ -38,38 +37,28 @@ joyZone.addEventListener('touchend', () => {
     joyStick.style.transform = `translate(0,0)`;
 });
 
-// Saut
 document.getElementById('jump-btn').addEventListener('touchstart', (e) => {
-    e.preventDefault();
     if(!player.isJumping) { player.velY = 0.15; player.isJumping = true; }
 });
 
-// Regard (Partie droite du canvas)
 canvas.addEventListener('touchstart', (e) => {
     let t = e.touches[0];
     if (t.clientX > window.innerWidth / 2) {
-        lastTouchX = t.clientX;
-        lastTouchY = t.clientY;
+        lastTouchX = t.clientX; lastTouchY = t.clientY;
     }
 });
 
 canvas.addEventListener('touchmove', (e) => {
     let t = e.touches[0];
     if (t.clientX > window.innerWidth / 2 && lastTouchX !== null) {
-        let dx = t.clientX - lastTouchX;
-        let dy = t.clientY - lastTouchY;
-        player.rotY -= dx * sensitivity;
-        player.rotX -= dy * sensitivity;
-        // Limite verticale pour ne pas se retourner
-        player.rotX = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, player.rotX));
-        lastTouchX = t.clientX;
-        lastTouchY = t.clientY;
+        player.rotY -= (t.clientX - lastTouchX) * sensitivity;
+        player.rotX -= (t.clientY - lastTouchY) * sensitivity;
+        player.rotX = Math.max(-1.4, Math.min(1.4, player.rotX));
+        lastTouchX = t.clientX; lastTouchY = t.clientY;
     }
 }, {passive: false});
 
-canvas.addEventListener('touchend', () => { lastTouchX = null; lastTouchY = null; });
-
-// --- INITIALISATION WEBGL ---
+// --- WEBGL CORE ---
 function createShader(gl, type, source) {
     const s = gl.createShader(type);
     gl.shaderSource(s, source);
@@ -83,17 +72,42 @@ const program = gl.createProgram();
 gl.attachShader(program, vS); gl.attachShader(program, fS);
 gl.linkProgram(program); gl.useProgram(program);
 
-// Données du Sol (Grand carré vert)
-const gridVertices = new Float32Array([-100,0,-100, 100,0,-100, 100,0,100, -100,0,100]);
-const gridColors = new Float32Array([0.2,0.6,0.2, 0.2,0.8,0.2, 0.2,0.6,0.2, 0.2,0.8,0.2]);
-const gridIndices = new Uint16Array([0,1,2, 0,2,3]);
-
-const posBuf = gl.createBuffer();
-const colBuf = gl.createBuffer();
-const idxBuf = gl.createBuffer();
 const matrixLoc = gl.getUniformLocation(program, "uMatrix");
 
-// --- MATHS DE MATRICE ---
+// --- CRÉATION DES OBJETS (SOL + CUBE TEST) ---
+// Sol (Vert) + Cube (Rouge)
+const vertices = new Float32Array([
+    // SOL
+    -50, 0, -50,   50, 0, -50,   50, 0, 50,  -50, 0, 50,
+    // CUBE TEST (Face avant seulement pour le repère)
+    -0.5, 0, -2,   0.5, 0, -2,   0.5, 1, -2,  -0.5, 1, -2
+]);
+
+const colors = new Float32Array([
+    // SOL
+    0.2, 0.6, 0.2,  0.3, 0.7, 0.3,  0.2, 0.6, 0.2,  0.3, 0.7, 0.3,
+    // CUBE
+    0.8, 0.2, 0.2,  0.8, 0.2, 0.2,  0.8, 0.2, 0.2,  0.8, 0.2, 0.2
+]);
+
+const indices = new Uint16Array([
+    0, 1, 2, 0, 2, 3, // Sol
+    4, 5, 6, 4, 6, 7  // Cube
+]);
+
+const posBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+const colBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+
+const idxBuf = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+// --- MATHS ---
 function perspective(fov, aspect, near, far) {
     let f = Math.tan(Math.PI * 0.5 - 0.5 * fov), inv = 1.0/(near-far);
     return [f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*inv,-1, 0,0,near*far*inv*2,0];
@@ -113,50 +127,39 @@ function multiply(a, b) {
 function render() {
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.5, 0.8, 1.0, 1.0); // Couleur du ciel
+    gl.clearColor(0.5, 0.8, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    // Physique du saut
+    // Mouvement & Physique
     if (player.isJumping) {
-        player.y += player.velY;
-        player.velY -= 0.008;
+        player.y += player.velY; player.velY -= 0.008;
         if (player.y <= 1.6) { player.y = 1.6; player.isJumping = false; }
     }
+    player.z += (Math.cos(player.rotY) * moveInput.y - Math.sin(player.rotY) * moveInput.x) * moveSpeed;
+    player.x += (Math.sin(player.rotY) * moveInput.y + Math.cos(player.rotY) * moveInput.x) * moveSpeed;
 
-    // Mouvement relatif à la rotation de la tête
-    let moveZ = Math.cos(player.rotY) * moveInput.y - Math.sin(player.rotY) * moveInput.x;
-    let moveX = Math.sin(player.rotY) * moveInput.y + Math.cos(player.rotY) * moveInput.x;
-    player.z += moveZ * moveSpeed;
-    player.x += moveX * moveSpeed;
-
-    // Calcul de la Caméra
+    // Camera
     let proj = perspective(1.0, canvas.width/canvas.height, 0.1, 200);
     let rx = [1,0,0,0, 0,Math.cos(player.rotX),Math.sin(player.rotX),0, 0,-Math.sin(player.rotX),Math.cos(player.rotX),0, 0,0,0,1];
     let ry = [Math.cos(player.rotY),0,-Math.sin(player.rotY),0, 0,1,0,0, Math.sin(player.rotY),0,Math.cos(player.rotY),0, 0,0,0,1];
     let pos = [1,0,0,0, 0,1,0,0, 0,0,1,0, -player.x, -player.y, -player.z, 1];
 
-    let view = multiply(ry, pos);
-    view = multiply(rx, view);
-    let final = multiply(new Float32Array(proj), view);
-    gl.uniformMatrix4fv(matrixLoc, false, final);
+    let view = multiply(multiply(rx, ry), pos);
+    gl.uniformMatrix4fv(matrixLoc, false, multiply(new Float32Array(proj), view));
 
-    // Dessin du Sol
+    // Draw
     gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, gridVertices, gl.STATIC_DRAW);
-    let pLoc = gl.getAttribLocation(program, "aPosition");
-    gl.enableVertexAttribArray(pLoc); gl.vertexAttribPointer(pLoc, 3, gl.FLOAT, false, 0, 0);
+    let pL = gl.getAttribLocation(program, "aPosition");
+    gl.enableVertexAttribArray(pL); gl.vertexAttribPointer(pL, 3, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, gridColors, gl.STATIC_DRAW);
-    let cLoc = gl.getAttribLocation(program, "aColor");
-    gl.enableVertexAttribArray(cLoc); gl.vertexAttribPointer(cLoc, 3, gl.FLOAT, false, 0, 0);
+    let cL = gl.getAttribLocation(program, "aColor");
+    gl.enableVertexAttribArray(cL); gl.vertexAttribPointer(cL, 3, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, gridIndices, gl.STATIC_DRAW);
-    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, 12, gl.UNSIGNED_SHORT, 0);
 
     requestAnimationFrame(render);
 }
-
 render();
