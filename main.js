@@ -3,23 +3,22 @@ const gl = canvas.getContext("webgl");
 
 if (!gl) { alert("WebGL non supporté"); }
 
-// --- 1. CONFIGURATION DU JOUEUR ---
+// --- CONFIGURATION JOUEUR ---
 let player = { 
-    x: 0, y: 1.6, z: 10, 
+    x: 0, y: 1.6, z: 60, // Position de départ face au château
     rotY: 0, rotX: 0,
     velY: 0, isJumping: false 
 };
 
-const sensitivity = 0.005;
-const moveSpeed = 0.15;
+const sensitivity = 0.006;
+const moveSpeed = 0.2;
 let moveInput = { x: 0, y: 0 };
 
-// --- 2. INTERFACE TACTILE ---
+// --- INTERFACE TACTILE ---
 const joyZone = document.getElementById('joystick-zone');
 const joyStick = document.getElementById('joystick');
 let lastTouchX = null, lastTouchY = null;
 
-// Joystick (Partie gauche)
 joyZone.addEventListener('touchmove', (e) => {
     e.preventDefault();
     let rect = joyZone.getBoundingClientRect();
@@ -34,13 +33,11 @@ joyZone.addEventListener('touchend', () => {
     joyStick.style.transform = `translate(0,0)`;
 });
 
-// Saut
 document.getElementById('jump-btn').addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if(!player.isJumping) { player.velY = 0.2; player.isJumping = true; }
+    if(!player.isJumping) { player.velY = 0.22; player.isJumping = true; }
 });
 
-// Regard (Partie droite)
 canvas.addEventListener('touchstart', (e) => {
     let t = e.touches[0];
     if (t.clientX > window.innerWidth / 2) {
@@ -58,9 +55,7 @@ canvas.addEventListener('touchmove', (e) => {
     }
 }, {passive: false});
 
-canvas.addEventListener('touchend', () => { lastTouchX = null; lastTouchY = null; });
-
-// --- 3. INITIALISATION WEBGL ---
+// --- WEBGL CORE ---
 function createShader(gl, type, source) {
     const s = gl.createShader(type);
     gl.shaderSource(s, source);
@@ -76,38 +71,53 @@ gl.linkProgram(program); gl.useProgram(program);
 
 const matrixLoc = gl.getUniformLocation(program, "uMatrix");
 
-// --- 4. GÉOMÉTRIE (SOL + POTEAU + NUAGES) ---
-let vertList = [
-    // SOL
-    -100, 0, -100,   100, 0, -100,   100, 0, 100,  -100, 0, 100,
-    // POTEAU (Repère visuel bleu)
-    -0.5, 0, -5,     0.5, 0, -5,     0.5, 8, -5,   -0.5, 8, -5
-];
+// --- GÉNÉRATEUR DE MAP (CASTLE) ---
+let vertList = [];
+let colorList = [];
+let indexList = [];
 
-let colorList = [
-    // SOL (Vert sombre)
-    0.2, 0.4, 0.2,  0.3, 0.5, 0.3,  0.2, 0.4, 0.2,  0.3, 0.5, 0.3,
-    // POTEAU (Bleu)
-    0.2, 0.2, 1.0,  0.2, 0.2, 1.0,  0.2, 0.2, 1.0,  0.2, 0.2, 1.0
-];
+function addBox(x, y, z, w, h, d, r, g, b) {
+    let s = vertList.length / 3;
+    // Sommets du cube (Positions)
+    vertList.push(
+        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y+h,z-d/2, x-w/2,y+h,z-d/2, // Front
+        x-w/2,y,z+d/2, x+w/2,y,z+d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2, // Back
+        x-w/2,y+h,z-d/2, x+w/2,y+h,z-d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2, // Top
+        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y,z+d/2, x-w/2,y,z+d/2 // Bottom
+    );
+    // Couleurs avec fausse ombre
+    for(let i=0; i<4; i++) colorList.push(r, g, b); // Front
+    for(let i=0; i<4; i++) colorList.push(r*0.7, g*0.7, b*0.7); // Back
+    for(let i=0; i<4; i++) colorList.push(r*1.1, g*1.1, b*1.1); // Top
+    for(let i=0; i<4; i++) colorList.push(r*0.5, g*0.5, b*0.5); // Bottom
+    // Triangles
+    let faces = [0,1,2,0,2,3, 4,5,6,4,6,7, 8,9,10,8,10,11, 12,13,14,12,14,15, 0,4,7,0,7,3, 1,5,6,1,6,2];
+    faces.forEach(f => indexList.push(s + f));
+}
 
-let indexList = [
-    0, 1, 2, 0, 2, 3, // Sol
-    4, 5, 6, 4, 6, 7  // Poteau
-];
+// Construction de la Map Castle
+addBox(0, -0.2, 0, 200, 0.2, 200, 0.3, 0.6, 0.3); // Sol Herbe
+addBox(0, 0, -20, 40, 6, 2, 0.6, 0.6, 0.6); // Mur Nord
+addBox(0, 0, 20, 40, 6, 2, 0.6, 0.6, 0.6);  // Mur Sud
+addBox(-20, 0, 0, 2, 6, 40, 0.6, 0.6, 0.6); // Mur Ouest
+addBox(20, 0, 0, 2, 6, 40, 0.6, 0.6, 0.6);  // Mur Est
 
-// Génération des Nuages
-for (let i = 0; i < 30; i++) {
-    let nx = (Math.random() - 0.5) * 150;
-    let ny = 20 + Math.random() * 10;
-    let nz = (Math.random() - 0.5) * 150;
-    let nw = 3 + Math.random() * 7;
-    
-    let startIdx = vertList.length / 3;
-    vertList.push(nx-nw, ny, nz-nw, nx+nw, ny, nz-nw, nx+nw, ny, nz+nw, nx-nw, ny, nz+nw);
-    let c = 0.9 + Math.random() * 0.1;
-    for(let j=0; j<4; j++) colorList.push(c, c, c);
-    indexList.push(startIdx, startIdx+1, startIdx+2, startIdx, startIdx+2, startIdx+3);
+// Tours d'angle
+const ts = 5; const th = 12;
+addBox(-20,0,-20, ts, th, ts, 0.5, 0.5, 0.5);
+addBox(20,0,-20, ts, th, ts, 0.5, 0.5, 0.5);
+addBox(-20,0,20, ts, th, ts, 0.5, 0.5, 0.5);
+addBox(20,0,20, ts, th, ts, 0.5, 0.5, 0.5);
+
+// Donjon et Drapeau
+addBox(0, 0, 0, 12, 18, 12, 0.7, 0.7, 0.7);
+addBox(0, 18, 0, 0.3, 5, 0.3, 0.2, 0.2, 0.2); // Mât
+addBox(1.5, 21, 0, 3, 1.5, 0.1, 0.8, 0.1, 0.1); // Drapeau Rouge
+
+// Nuages
+for(let i=0; i<40; i++){
+    let nx=(Math.random()-0.5)*180, ny=25+Math.random()*10, nz=(Math.random()-0.5)*180;
+    addBox(nx, ny, nz, 6, 0.5, 6, 1, 1, 1);
 }
 
 const posBuf = gl.createBuffer();
@@ -122,31 +132,25 @@ const idxBuf = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexList), gl.STATIC_DRAW);
 
-// --- 5. MATHS DE MATRICE ---
+// --- MATHS ---
 function perspective(fov, aspect, near, far) {
     let f = 1.0 / Math.tan(fov / 2), inv = 1 / (near - far);
     return [f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*inv,-1, 0,0,near*far*inv*2,0];
 }
-
 function multiply(a, b) {
     let c = new Float32Array(16);
-    for(let i=0; i<4; i++) {
-        for(let j=0; j<4; j++) {
-            for(let k=0; k<4; k++) c[i*4+j] += a[i*4+k] * b[k*4+j];
-        }
-    }
+    for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) c[i*4+j]+=a[i*4+k]*b[k*4+j];
     return c;
 }
 
-// --- 6. BOUCLE DE RENDU ---
+// --- BOUCLE ---
 function render() {
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.5, 0.8, 1.0, 1.0); // Ciel bleu
+    gl.clearColor(0.5, 0.8, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
-    // Mouvement & Gravité
     if (player.isJumping) {
         player.y += player.velY; player.velY -= 0.01;
         if (player.y <= 1.6) { player.y = 1.6; player.isJumping = false; }
@@ -154,24 +158,20 @@ function render() {
     player.z += (Math.cos(player.rotY) * moveInput.y - Math.sin(player.rotY) * moveInput.x) * moveSpeed;
     player.x += (Math.sin(player.rotY) * moveInput.y + Math.cos(player.rotY) * moveInput.x) * moveSpeed;
 
-    // Matrice de Vue
-    let proj = perspective(1.0, canvas.width/canvas.height, 0.1, 500);
+    let p = perspective(1.0, canvas.width/canvas.height, 0.1, 1000);
     let rx = [1,0,0,0, 0,Math.cos(player.rotX),Math.sin(player.rotX),0, 0,-Math.sin(player.rotX),Math.cos(player.rotX),0, 0,0,0,1];
     let ry = [Math.cos(player.rotY),0,-Math.sin(player.rotY),0, 0,1,0,0, Math.sin(player.rotY),0,Math.cos(player.rotY),0, 0,0,0,1];
     let pos = [1,0,0,0, 0,1,0,0, 0,0,1,0, -player.x, -player.y, -player.z, 1];
 
     let view = multiply(multiply(rx, ry), pos);
-    gl.uniformMatrix4fv(matrixLoc, false, multiply(new Float32Array(proj), view));
+    gl.uniformMatrix4fv(matrixLoc, false, multiply(new Float32Array(p), view));
 
-    // Dessin
     gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
     let pL = gl.getAttribLocation(program, "aPosition");
     gl.enableVertexAttribArray(pL); gl.vertexAttribPointer(pL, 3, gl.FLOAT, false, 0, 0);
-
     gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
     let cL = gl.getAttribLocation(program, "aColor");
     gl.enableVertexAttribArray(cL); gl.vertexAttribPointer(cL, 3, gl.FLOAT, false, 0, 0);
-
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
     gl.drawElements(gl.TRIANGLES, indexList.length, gl.UNSIGNED_SHORT, 0);
 
