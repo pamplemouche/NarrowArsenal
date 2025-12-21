@@ -1,10 +1,8 @@
 body {
     margin: 0;
-    overflow: hidden; 
-    background-color: #111;
+    overflow: hidden;
+    background-color: #000;
 }
-
-#game-container {
-    width: 100vw;
-    height: 100vh;
+canvas {
+    display: block;
 }
