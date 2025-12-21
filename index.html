@@ -3,32 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Narrow Arsenal WebGL</title>
+    <title>Narrow WebGL - FPS</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         canvas { width: 100vw; height: 100vh; display: block; }
+        
+        /* Interface tactile */
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #joystick-zone { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; 
+                         background: rgba(255,255,255,0.1); border-radius: 50%; pointer-events: auto; }
+        #joystick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; 
+                    background: #fff; border-radius: 50%; opacity: 0.5; }
+        #jump-btn { position: absolute; bottom: 50px; right: 40px; width: 80px; height: 80px; 
+                    background: rgba(255,255,255,0.2); border-radius: 50%; pointer-events: auto;
+                    display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                     width: 20px; height: 20px; border: 2px solid white; border-radius: 50%; }
     </style>
 </head>
 <body>
     <canvas id="glCanvas"></canvas>
+    
+    <div id="ui">
+        <div id="crosshair"></div>
+        <div id="joystick-zone"><div id="joystick"></div></div>
+        <div id="jump-btn">SAUT</div>
+    </div>
 
     <script id="vs" type="x-shader/x-vertex">
         attribute vec4 aPosition;
         attribute vec4 aColor;
         uniform mat4 uMatrix;
         varying vec4 vColor;
-        void main() {
-            gl_Position = uMatrix * aPosition;
-            vColor = aColor;
-        }
+        void main() { gl_Position = uMatrix * aPosition; vColor = aColor; }
     </script>
-
-    <script id="fs" type="x-shader/x-fragment">
+     <script id="fs" type="x-shader/x-fragment">
         precision mediump float;
         varying vec4 vColor;
-        void main() {
-            gl_FragColor = vColor;
-        }
+        void main() { gl_FragColor = vColor; }
     </script>
 
     <script src="main.js"></script>
