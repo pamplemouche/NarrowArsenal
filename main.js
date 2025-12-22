@@ -3,7 +3,7 @@ const gl = canvas.getContext("webgl");
 
 if (!gl) { alert("WebGL non supporté"); }
 
-// --- 1. SHADERS INTÉGRÉS (Plus fiable sur iPad) ---
+// --- 1. SHADERS (Incrustés pour éviter les bugs) ---
 const vsSource = `
     attribute vec4 aPosition;
     attribute vec4 aColor;
@@ -23,27 +23,26 @@ const fsSource = `
     }
 `;
 
-function initShaderProgram(gl, vsSource, fsSource) {
-    const vS = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vS, vsSource); gl.compileShader(vS);
-    const fS = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fS, fsSource); gl.compileShader(fS);
-    const prog = gl.createProgram();
-    gl.attachShader(prog, vS); gl.attachShader(prog, fS);
-    gl.linkProgram(prog);
-    return prog;
+function initShader(gl, type, source) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source); gl.compileShader(s);
+    return s;
 }
 
-const program = initShaderProgram(gl, vsSource, fsSource);
-gl.useProgram(program);
+const prog = gl.createProgram();
+gl.attachShader(prog, initShader(gl, gl.VERTEX_SHADER, vsSource));
+gl.attachShader(prog, initShader(gl, gl.FRAGMENT_SHADER, fsSource));
+gl.linkProgram(prog); gl.useProgram(prog);
 
-// --- 2. CONFIGURATION DU JOUEUR ---
-let player = { x: 0, y: 1.6, z: 40, rotY: 0, rotX: 0, velY: 0, isJumping: false };
-const sensitivity = 0.006;
-const moveSpeed = 0.2;
+const matrixLoc = gl.getUniformLocation(prog, "uMatrix");
+
+// --- 2. CONFIGURATION ---
+let player = { x: 0, y: 1.6, z: 45, rotY: 0, rotX: 0, velY: 0, isJumping: false };
+const sensitivity = 0.005;
+const moveSpeed = 0.18;
 let moveInput = { x: 0, y: 0 };
 
-// --- 3. GÉOMÉTRIE (CASTLE) ---
+// --- 3. GÉOMÉTRIE (SOL + CHÂTEAU + ARC) ---
 let vertList = [];
 let colorList = [];
 let indexList = [];
@@ -51,10 +50,10 @@ let indexList = [];
 function addBox(x, y, z, w, h, d, r, g, b) {
     let s = vertList.length / 3;
     vertList.push(
-        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y+h,z-d/2, x-w/2,y+h,z-d/2,
-        x-w/2,y,z+d/2, x+w/2,y,z+d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2,
-        x-w/2,y+h,z-d/2, x+w/2,y+h,z-d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2,
-        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y,z+d/2, x-w/2,y,z+d/2
+        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y+h,z-d/2, x-w/2,y+h,z-d/2, // Front
+        x-w/2,y,z+d/2, x+w/2,y,z+d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2, // Back
+        x-w/2,y+h,z-d/2, x+w/2,y+h,z-d/2, x+w/2,y+h,z+d/2, x-w/2,y+h,z+d/2, // Top
+        x-w/2,y,z-d/2, x+w/2,y,z-d/2, x+w/2,y,z+d/2, x-w/2,y,z+d/2  // Bottom
     );
     for(let i=0; i<4; i++) colorList.push(r, g, b);           
     for(let i=0; i<4; i++) colorList.push(r*0.7, g*0.7, b*0.7); 
@@ -64,42 +63,26 @@ function addBox(x, y, z, w, h, d, r, g, b) {
     f.forEach(v => indexList.push(s + v));
 }
 
-// Construction de la Map
-addBox(0, -0.2, 0, 1000, 0.2, 1000, 0.3, 0.55, 0.3); // Sol géant
-addBox(0, 0, -20, 40, 7, 2, 0.6, 0.6, 0.6); // Murs
-addBox(0, 0, 20, 15, 7, 2, 0.6, 0.6, 0.6);  
+// Construction Map
+addBox(0, -0.2, 0, 1000, 0.2, 1000, 0.3, 0.55, 0.3); // Sol Immense
+addBox(0, 0, -20, 40, 7, 2, 0.6, 0.6, 0.6); // Mur Nord
+addBox(0, 0, 20, 15, 7, 2, 0.6, 0.6, 0.6);  // Mur Sud (Entrée)
 addBox(12, 0, 20, 15, 7, 2, 0.6, 0.6, 0.6); 
 addBox(-20, 0, 0, 2, 7, 40, 0.55, 0.55, 0.55); 
 addBox(20, 0, 0, 2, 7, 40, 0.55, 0.55, 0.55);
-addBox(0, 0, 0, 12, 20, 12, 0.7, 0.7, 0.7); // Donjon
-for(let i=0; i<40; i++){ // Nuages
-    addBox((Math.random()-0.5)*400, 30+Math.random()*10, (Math.random()-0.5)*400, 10, 0.5, 10, 1,1,1);
-}
+addBox(0, 0, 0, 12, 18, 12, 0.7, 0.7, 0.7); // Donjon
+addBox(0, 18, 0, 0.3, 5, 0.3, 0.2, 0.2, 0.2); // Mât
+addBox(2, 22, 0, 4, 2, 0.1, 0.9, 0.1, 0.1); // Drapeau
 
-const posBuf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+// Buffer Creation
+const posBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertList), gl.STATIC_DRAW);
-const colBuf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
+const colBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorList), gl.STATIC_DRAW);
-const idxBuf = gl.createBuffer();
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+const idxBuf = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexList), gl.STATIC_DRAW);
 
-const matrixLoc = gl.getUniformLocation(program, "uMatrix");
-
-// --- 4. MATHS ---
-function perspective(fov, aspect, near, far) {
-    let f = 1.0 / Math.tan(fov / 2), inv = 1 / (near - far);
-    return [f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*inv,-1, 0,0,near*far*inv*2,0];
-}
-function multiply(a, b) {
-    let c = new Float32Array(16);
-    for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) c[i*4+j]+=a[i*4+k]*b[k*4+j];
-    return c;
-}
-
-// --- 5. TACTILE ---
+// --- 4. TACTILE ---
 const joyZone = document.getElementById('joystick-zone');
 const joyStick = document.getElementById('joystick');
 let lX = null, lY = null;
@@ -114,20 +97,39 @@ joyZone.addEventListener('touchmove', (e) => {
 }, {passive: false});
 
 joyZone.addEventListener('touchend', () => { moveInput = {x:0,y:0}; joyStick.style.transform = `translate(0,0)`; });
-document.getElementById('jump-btn').addEventListener('touchstart', (e) => { if(!player.isJumping){ player.velY=0.22; player.isJumping=true; } });
 
-canvas.addEventListener('touchstart', (e) => { let t=e.touches[0]; if(t.clientX > window.innerWidth/2){ lX=t.clientX; lY=t.clientY; } });
+canvas.addEventListener('touchstart', (e) => { 
+    let t = e.touches[0]; 
+    if(t.clientX > window.innerWidth/2) { lX = t.clientX; lY = t.clientY; } 
+});
+
 canvas.addEventListener('touchmove', (e) => {
-    let t=e.touches[0];
-    if(t.clientX > window.innerWidth/2 && lX!==null){
+    let t = e.touches[0];
+    if(t.clientX > window.innerWidth/2 && lX !== null) {
         player.rotY -= (t.clientX - lX) * sensitivity;
         player.rotX -= (t.clientY - lY) * sensitivity;
-        player.rotX = Math.max(-1.5, Math.min(1.5, player.rotX));
-        lX=t.clientX; lY=t.clientY;
+        // Limite verticale pour ne pas se retourner
+        player.rotX = Math.max(-1.4, Math.min(1.4, player.rotX));
+        lX = t.clientX; lY = t.clientY;
     }
 }, {passive: false});
 
-// --- 6. RENDU ---
+document.getElementById('jump-btn').addEventListener('touchstart', (e) => {
+    if(!player.isJumping) { player.velY = 0.22; player.isJumping = true; }
+});
+
+// --- 5. MATHS ET RENDU ---
+function mPerspective(fov, aspect, near, far) {
+    let f = 1.0 / Math.tan(fov / 2), rangeInv = 1 / (near - far);
+    return [f/aspect,0,0,0, 0,f,0,0, 0,0,(near+far)*rangeInv,-1, 0,0,near*far*rangeInv*2,0];
+}
+
+function mMultiply(a, b) {
+    let c = new Float32Array(16);
+    for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) c[i*4+j]+=a[i*4+k]*b[k*4+j];
+    return c;
+}
+
 function render() {
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -135,6 +137,7 @@ function render() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
+    // Mouvement
     if (player.isJumping) {
         player.y += player.velY; player.velY -= 0.01;
         if (player.y <= 1.6) { player.y = 1.6; player.isJumping = false; }
@@ -142,20 +145,33 @@ function render() {
     player.z += (Math.cos(player.rotY) * moveInput.y - Math.sin(player.rotY) * moveInput.x) * moveSpeed;
     player.x += (Math.sin(player.rotY) * moveInput.y + Math.cos(player.rotY) * moveInput.x) * moveSpeed;
 
-    let p = perspective(1.0, canvas.width/canvas.height, 0.1, 1500);
-    let rx = [1,0,0,0, 0,Math.cos(player.rotX),Math.sin(player.rotX),0, 0,-Math.sin(player.rotX),Math.cos(player.rotX),0, 0,0,0,1];
-    let ry = [Math.cos(player.rotY),0,-Math.sin(player.rotY),0, 0,1,0,0, Math.sin(player.rotY),0,Math.cos(player.rotY),0, 0,0,0,1];
-    let pos = [1,0,0,0, 0,1,0,0, 0,0,1,0, -player.x, -player.y, -player.z, 1];
+    // Matrice de Vue Corrigée
+    let p = mPerspective(1.0, canvas.width/canvas.height, 0.1, 1500);
+    
+    // Rotation X (Haut/Bas)
+    let cx = Math.cos(player.rotX), sx = Math.sin(player.rotX);
+    let rotXMat = [1,0,0,0, 0,cx,sx,0, 0,-sx,cx,0, 0,0,0,1];
+    
+    // Rotation Y (Gauche/Droite)
+    let cy = Math.cos(player.rotY), sy = Math.sin(player.rotY);
+    let rotYMat = [cy,0,-sy,0, 0,1,0,0, sy,0,cy,0, 0,0,0,1];
+    
+    // Translation (Position)
+    let posMat = [1,0,0,0, 0,1,0,0, 0,0,1,0, -player.x, -player.y, -player.z, 1];
 
-    let view = multiply(multiply(rx, ry), pos);
-    gl.uniformMatrix4fv(matrixLoc, false, multiply(new Float32Array(p), view));
+    // L'ordre CRUCIAL : Projection * RotationX * RotationY * Position
+    let view = mMultiply(rotXMat, mMultiply(rotYMat, posMat));
+    gl.uniformMatrix4fv(matrixLoc, false, mMultiply(new Float32Array(p), view));
 
+    // Dessin
     gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-    let pL = gl.getAttribLocation(program, "aPosition");
+    let pL = gl.getAttribLocation(prog, "aPosition");
     gl.enableVertexAttribArray(pL); gl.vertexAttribPointer(pL, 3, gl.FLOAT, false, 0, 0);
+    
     gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
-    let cL = gl.getAttribLocation(program, "aColor");
+    let cL = gl.getAttribLocation(prog, "aColor");
     gl.enableVertexAttribArray(cL); gl.vertexAttribPointer(cL, 3, gl.FLOAT, false, 0, 0);
+    
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
     gl.drawElements(gl.TRIANGLES, indexList.length, gl.UNSIGNED_SHORT, 0);
 
