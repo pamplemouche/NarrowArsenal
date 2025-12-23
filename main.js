@@ -1,97 +1,89 @@
-const canvas = document.querySelector("#glCanvas");
-const gl = canvas.getContext("webgl");
+// --- INITIALISATION ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb); // Ciel bleu
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector("#glCanvas"), antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
 
-const vs = `attribute vec4 aPos; attribute vec4 aCol; uniform mat4 uM; varying vec4 vC;
-void main() { gl_Position = uM * aPos; vC = aCol; }`;
-const fs = `precision mediump float; varying vec4 vC; void main() { gl_FragColor = vC; }`;
+// --- LUMIÈRE (Essentiel pour voir la 3D) ---
+const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+scene.add(light);
 
-function compile(gl, type, src) {
-    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s;
-}
-const prog = gl.createProgram();
-gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, vs));
-gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, fs));
-gl.linkProgram(prog); gl.useProgram(prog);
-const uM = gl.getUniformLocation(prog, "uM");
+// --- OBJETS ---
+// Le Sol
+const floorGeo = new THREE.PlaneGeometry(1000, 1000);
+const floorMat = new THREE.MeshLambertMaterial({ color: 0x44aa44 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2; // Le mettre à plat
+scene.add(floor);
 
-// --- JOUEUR (Position très reculée par rapport à la taille des objets) ---
-let cam = { x: 0, y: 0.5, z: 4, rx: 0, ry: 0 };
-let move = { x: 0, y: 0 };
+// Le Cube Cible (Rouge)
+const cubeGeo = new THREE.BoxGeometry(2, 2, 2);
+const cubeMat = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+const cube = new THREE.Mesh(cubeGeo, cubeMat);
+cube.position.set(0, 1, -10); // 10 mètres devant
+scene.add(cube);
 
-// --- GÉOMÉTRIE MINIATURE ---
-let v = [], c = [], ind = [];
-function addBox(x, y, z, w, h, d, r, g, b) {
-    let s = v.length / 3;
-    v.push(x-w,y,z-d, x+w,y,z-d, x+w,y+h,z-d, x-w,y+h,z-d, x-w,y,z+d, x+w,y,z+d, x+w,y+h,z+d, x-w,y+h,z+d);
-    for(let i=0; i<8; i++) c.push(r, g, b);
-    let f = [0,1,2, 0,2,3, 4,5,6, 4,6,7, 0,4,7, 0,7,3, 1,5,6, 1,6,2, 3,2,6, 3,6,7, 0,1,5, 0,5,4];
-    f.forEach(i => ind.push(s + i));
-}
+// L'Arc (Bâton blanc attaché à la caméra)
+const bowGeo = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+const bowMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const bow = new THREE.Mesh(bowGeo, bowMat);
+bow.position.set(0.5, -0.4, -0.8); // En bas à droite de l'écran
+camera.add(bow); // L'attacher à la caméra pour qu'il la suive
+scene.add(camera);
 
-// Un sol de 20m et un petit cube de 0.5m
-addBox(0, -0.01, 0, 10, 0.01, 10, 0.2, 0.5, 0.2); // Sol
-addBox(0, 0, 0, 0.2, 0.4, 0.2, 0.8, 0.1, 0.1);    // Petit cube rouge
+// --- ÉTAT DU JOUEUR ---
+camera.position.y = 1.7;
+let moveForward = 0, moveRight = 0;
+let lookY = 0, lookX = 0;
 
-const pB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pB); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
-const cB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cB); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(c), gl.STATIC_DRAW);
-const iB = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iB); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(ind), gl.STATIC_DRAW);
+// --- CONTRÔLES TACTILES ---
+let startX, startY;
 
-// --- CONTRÔLES ---
-let lX, lY;
-canvas.ontouchstart = (e) => { lX = e.touches[0].clientX; lY = e.touches[0].clientY; };
-canvas.ontouchmove = (e) => {
-    let t = e.touches[0];
-    if(t.clientX > window.innerWidth / 2) {
-        cam.ry -= (t.clientX - lX) * 0.005;
-        cam.rx = Math.max(-1.4, Math.min(1.4, cam.rx - (t.clientY - lY) * 0.005));
-        lX = t.clientX; lY = t.clientY;
+window.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    if (t.clientX > window.innerWidth / 2) {
+        startX = t.clientX; startY = t.clientY;
     }
-};
-document.getElementById('joystick-zone').ontouchmove = (e) => {
-    let r = e.currentTarget.getBoundingClientRect(); let t = e.touches[0];
-    move.x = (t.clientX - (r.left+60))/60; move.y = (t.clientY - (r.top+60))/60;
-};
-document.getElementById('joystick-zone').ontouchend = () => { move.x = 0; move.y = 0; };
+});
 
-// --- RENDU ---
-function draw() {
-    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.5, 0.8, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST);
+window.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    // Regarder (Moitié droite)
+    if (t.clientX > window.innerWidth / 2) {
+        lookY -= (t.clientX - startX) * 0.005;
+        lookX -= (t.clientY - startY) * 0.005;
+        lookX = Math.max(-Math.PI/2.1, Math.min(Math.PI/2.1, lookX));
+        camera.rotation.order = 'YXZ'; // Très important pour FPS
+        camera.rotation.set(lookX, lookY, 0);
+        startX = t.clientX; startY = t.clientY;
+    }
+    // Joystick (Moitié gauche)
+    const joyZone = document.getElementById('joystick-zone').getBoundingClientRect();
+    if (t.clientX < window.innerWidth / 2) {
+        moveRight = (t.clientX - (joyZone.left + 60)) / 60;
+        moveForward = (t.clientY - (joyZone.top + 60)) / -60;
+    }
+});
 
-    cam.z += (Math.cos(cam.ry) * move.y - Math.sin(cam.ry) * move.x) * 0.05;
-    cam.x += (Math.sin(cam.ry) * move.y + Math.cos(cam.ry) * move.x) * 0.05;
+window.addEventListener('touchend', () => { moveForward = 0; moveRight = 0; });
 
-    let asp = canvas.width / canvas.height;
-    let f = 1.0 / Math.tan(1.0 / 2);
-    let proj = [f/asp,0,0,0, 0,f,0,0, 0,0,-1,-1, 0,0,-0.2,0];
-    
-    let cx = Math.cos(cam.rx), sx = Math.sin(cam.rx);
-    let cy = Math.cos(cam.ry), sy = Math.sin(cam.ry);
-    
-    // Matrice de vue FPS Corrigée
-    let view = [
-        cy, sx*sy, cx*sy, 0,
-        0, cx, -sx, 0,
-        -sy, sx*cy, cx*cy, 0,
-        -cam.x*cy + cam.z*sy, -cam.x*sx*sy - cam.y*cx - cam.z*sx*cy, -cam.x*cx*sy + cam.y*sx - cam.z*cx*cy, 1
-    ];
+// --- BOUCLE DE JEU ---
+function animate() {
+    requestAnimationFrame(animate);
 
-    const mult = (a, b) => {
-        let res = new Float32Array(16);
-        for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) res[i*4+j]+=a[i*4+k]*b[k*4+j];
-        return res;
-    };
+    // Déplacement
+    camera.translateZ(-moveForward * 0.2);
+    camera.translateX(moveRight * 0.2);
+    camera.position.y = 1.7; // Garder la tête à hauteur d'homme
 
-    gl.uniformMatrix4fv(uM, false, mult(proj, view));
-    gl.bindBuffer(gl.ARRAY_BUFFER, pB);
-    let pL = gl.getAttribLocation(prog, "aPos"); gl.enableVertexAttribArray(pL); gl.vertexAttribPointer(pL, 3, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, cB);
-    let cL = gl.getAttribLocation(prog, "aCol"); gl.enableVertexAttribArray(cL); gl.vertexAttribPointer(cL, 3, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iB);
-    gl.drawElements(gl.TRIANGLES, ind.length, gl.UNSIGNED_SHORT, 0);
-
-    requestAnimationFrame(draw);
+    renderer.render(scene, camera);
 }
-draw();
+animate();
+
+// Gérer le redimensionnement
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
