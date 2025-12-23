@@ -2,83 +2,103 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Narrow Arsenal - Fix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Narrow Arsenal Pro</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #87ceeb; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #ui { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; background: rgba(255,255,255,0.2); border-radius: 50%; }
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 20px; height: 20px; border: 2px solid white;
+            border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
+    <div id="crosshair"></div>
     <canvas id="glCanvas"></canvas>
-    <div id="ui"></div>
 
-    <script>
-        // CE CODE REMPLACE THREE.JS ET LE MAIN.JS EN UN SEUL BLOC
-        const canvas = document.getElementById("glCanvas");
-        const gl = canvas.getContext("webgl");
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.160.0';
 
-        const vs = `attribute vec4 position; attribute vec4 color; uniform mat4 uMat; varying vec4 vCol;
-                    void main() { gl_Position = uMat * position; vCol = color; }`;
-        const fs = `precision mediump float; varying vec4 vCol; void main() { gl_FragColor = vCol; }`;
-
-        function createShader(gl, type, src) {
-            const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s;
-        }
-        const prog = gl.createProgram();
-        gl.attachShader(prog, createShader(gl, gl.VERTEX_SHADER, vs));
-        gl.attachShader(prog, createShader(gl, gl.FRAGMENT_SHADER, fs));
-        gl.linkProgram(prog); gl.useProgram(prog);
-
-        // Données du monde (Sol + Cube)
-        const vertices = new Float32Array([
-            -50,-0.1,-50, 50,-0.1,-50, 50,-0.1,50, -50,-0.1,50, // Sol
-            -1,0,-1, 1,0,-1, 1,2,-1, -1,2,-1,  -1,0,1, 1,0,1, 1,2,1, -1,2,1 // Cube
-        ]);
-        const colors = new Float32Array([
-            0.2,0.6,0.2, 0.2,0.6,0.2, 0.2,0.6,0.2, 0.2,0.6,0.2, // Vert
-            0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1, 0.8,0.1,0.1 // Rouge
-        ]);
-
-        const pBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, pBuf); gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-        const cBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, cBuf); gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-
-        let camY = 0;
+        // --- CONFIGURATION SCÈNE ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
         
-        function render() {
-            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-            gl.viewport(0, 0, canvas.width, canvas.height);
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-            gl.enable(gl.DEPTH_TEST);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector("#glCanvas"), antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
 
-            const aspect = canvas.width / canvas.height;
-            const cos = Math.cos(camY), sin = Math.sin(camY);
+        // --- LUMIÈRES ---
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambient);
+        const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+        sun.position.set(10, 20, 10);
+        scene.add(sun);
+
+        // --- MONDE ---
+        // Sol avec grille pour bien voir le mouvement
+        const grid = new THREE.GridHelper(200, 50, 0x0000ff, 0xffffff);
+        scene.add(grid);
+        
+        const floorGeo = new THREE.PlaneGeometry(200, 200);
+        const floorMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Château / Cible (Cube rouge pro)
+        const targetGeo = new THREE.BoxGeometry(2, 4, 2);
+        const targetMat = new THREE.MeshLambertMaterial({ color: 0xb71c1c });
+        const target = new THREE.Mesh(targetGeo, targetMat);
+        target.position.set(0, 2, -15);
+        scene.add(target);
+
+        // --- L'ARC (Attaché à la caméra) ---
+        const bowGroup = new THREE.Group();
+        const bowPart = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.05, 0.8, 4, 8),
+            new THREE.MeshStandardMaterial({ color: 0x3e2723 })
+        );
+        bowPart.rotation.z = Math.PI / 4;
+        bowGroup.add(bowPart);
+        bowGroup.position.set(0.4, -0.5, -1);
+        camera.add(bowGroup);
+        scene.add(camera);
+
+        // --- MOUVEMENTS ---
+        camera.position.y = 1.7;
+        let lookY = 0, lookX = 0;
+        let moveForward = 0, moveRight = 0;
+
+        // Contrôles iPad
+        window.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (t.clientX > window.innerWidth / 2) {
+                // Rotation (Moitié droite)
+                lookY -= 0.005; // Test auto rotation si le move bug
+                camera.rotation.order = 'YXZ';
+                camera.rotation.set(lookX, lookY, 0);
+            } else {
+                // Avancer (Moitié gauche)
+                moveForward = 1;
+            }
+        });
+
+        window.addEventListener('touchend', () => { moveForward = 0; });
+
+        function animate() {
+            requestAnimationFrame(animate);
             
-            // Matrice simplifiée (Vue + Projection)
-            const mat = [
-                cos/aspect, 0, sin, 0,
-                0, 1, 0, 0,
-                -sin/aspect, 0, cos, 0,
-                0, -0.5, -5, 1
-            ];
-
-            const uLoc = gl.getUniformLocation(prog, "uMat");
-            gl.uniformMatrix4fv(uLoc, false, new Float32Array(mat));
-
-            const pLoc = gl.getAttribLocation(prog, "position");
-            gl.bindBuffer(gl.ARRAY_BUFFER, pBuf); gl.enableVertexAttribArray(pLoc); gl.vertexAttribPointer(pLoc, 3, gl.FLOAT, false, 0, 0);
-
-            const cLoc = gl.getAttribLocation(prog, "color");
-            gl.bindBuffer(gl.ARRAY_BUFFER, cBuf); gl.enableVertexAttribArray(cLoc); gl.vertexAttribPointer(cLoc, 3, gl.FLOAT, false, 0, 0);
-
-            gl.drawArrays(gl.TRIANGLE_FAN, 0, 4); // Sol
-            gl.drawArrays(gl.TRIANGLE_FAN, 4, 4); // Face cube
+            if(moveForward) camera.translateZ(-0.1);
             
-            camY += 0.01;
-            requestAnimationFrame(render);
+            renderer.render(scene, camera);
         }
-        render();
+        
+        // Si Skypack est bloqué par Jamf, on affiche l'erreur direct
+        animate();
     </script>
 </body>
 </html>
