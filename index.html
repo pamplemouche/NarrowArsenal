@@ -3,20 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Narrow Arsenal - Final</title>
+    <title>Narrow Arsenal - Landscape Edition</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
         canvas { display: block; width: 100vw; height: 100vh; }
         
-        /* Viseur central */
+        /* Message d'alerte Portrait */
+        #landscape-message {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: #1a1a2e;
+            color: white;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        /* Affichage conditionnel selon l'orientation */
+        @media (orientation: portrait) {
+            #landscape-message { display: flex; }
+            canvas, #ui-layer { display: none; }
+        }
+
+        /* HUD et Contrôles */
         #crosshair {
             position: absolute; top: 50%; left: 50%;
             width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.7);
             border-radius: 50%; transform: translate(-50%, -50%);
-            pointer-events: none; z-index: 10;
+            pointer-events: none;
         }
-
-        /* Joystick de déplacement (Gauche) */
         #joy-container {
             position: absolute; bottom: 40px; left: 40px;
             width: 100px; height: 100px; background: rgba(255,255,255,0.1);
@@ -25,23 +44,30 @@
         #joy-knob {
             position: absolute; top: 30px; left: 30px;
             width: 40px; height: 40px; background: rgba(255,255,255,0.4);
-            border-radius: 50%;
+            border-radius: 50%; transition: transform 0.1s ease-out;
         }
-
-        /* Bouton de saut (Droite) */
         #jump-btn {
             position: absolute; bottom: 50px; right: 40px;
-            width: 60px; height: 60px; background: rgba(255,255,255,0.1);
+            width: 70px; height: 70px; background: rgba(255,255,255,0.1);
             border: 2px solid white; border-radius: 50%;
             color: white; display: flex; align-items: center; justify-content: center;
-            font-size: 14px; font-weight: bold; user-select: none;
+            font-weight: bold; user-select: none;
         }
     </style>
 </head>
 <body>
-    <div id="crosshair"></div>
-    <div id="joy-container"><div id="joy-knob"></div></div>
-    <div id="jump-btn">SAUT</div>
+
+    <div id="landscape-message">
+        <p style="font-size: 40px;">🔄</p>
+        <p>Tournez votre iPad en mode Paysage</p>
+    </div>
+
+    <div id="ui-layer">
+        <div id="crosshair"></div>
+        <div id="joy-container"><div id="joy-knob"></div></div>
+        <div id="jump-btn">SAUT</div>
+    </div>
+
     <canvas id="glCanvas"></canvas>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
