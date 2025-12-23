@@ -1,90 +1,85 @@
-// On vérifie si Three.js est chargé
-if (typeof THREE === 'undefined') {
-    alert("Le fichier Three.min.js n'est pas détecté. Vérifie le nom du fichier !");
-}
+// --- SÉCURITÉ DÉMARRAGE ---
+console.log("Démarrage du script...");
 
-// --- INITIALISATION ---
+// 1. SCÈNE ET RENDU
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-var renderer = new THREE.WebGLRenderer({ 
-    canvas: document.getElementById("glCanvas"),
-    antialias: true 
-});
+
+// On essaie de récupérer le canvas
+var canvasElement = document.getElementById("glCanvas");
+var renderer = new THREE.WebGLRenderer({ canvas: canvasElement, antialias: true });
+
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x87ceeb, 1); // Ciel bleu
+renderer.setClearColor(0x00ffff, 1); // Bleu turquoise pour voir si le moteur marche
 
-// --- LUMIÈRES ---
-var light = new THREE.DirectionalLight(0xffffff, 1.2);
-light.position.set(1, 1, 1).normalize();
-scene.add(light);
-scene.add(new THREE.AmbientLight(0x404040));
-
-// --- MONDE ---
-// Sol vert
-var floorGeo = new THREE.PlaneGeometry(500, 500);
-var floorMat = new THREE.MeshLambertMaterial({ color: 0x2e7d32 });
+// 2. OBJETS (MeshBasicMaterial = visible même sans lumière)
+// Sol
+var floorGeo = new THREE.PlaneGeometry(100, 100);
+var floorMat = new THREE.MeshBasicMaterial({ color: 0x228B22 });
 var floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 
-// Cube rouge (Cible)
-var targetGeo = new THREE.BoxGeometry(2, 4, 2);
-var targetMat = new THREE.MeshLambertMaterial({ color: 0xb71c1c });
-var target = new THREE.Mesh(targetGeo, targetMat);
-target.position.set(0, 2, -15);
+// Cube cible (Rouge)
+var cubeGeo = new THREE.BoxGeometry(2, 2, 2);
+var cubeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+var target = new THREE.Mesh(cubeGeo, cubeMat);
+target.position.set(0, 1, -10);
 scene.add(target);
 
-// --- L'ARC (Objet attaché à la caméra) ---
-var bow = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.05, 0.7, 8),
-    new THREE.MeshLambertMaterial({ color: 0x5d4037 })
-);
-// Positionnement type FPS
-bow.position.set(0.4, -0.4, -0.8);
-bow.rotation.x = Math.PI / 4;
-bow.rotation.z = Math.PI / 4;
-
+// L'Arc (Bâton blanc attaché à la vue)
+var bowGeo = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+var bowMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+var bow = new THREE.Mesh(bowGeo, bowMat);
+bow.position.set(0.5, -0.4, -1);
 camera.add(bow);
-scene.add(camera); // Obligatoire pour voir les objets attachés à la caméra
+scene.add(camera);
 
-// --- CONTRÔLES ---
+// 3. ÉTAT DU JOUEUR
 camera.position.y = 1.7;
 var lookY = 0;
 var moveForward = 0;
 
-// Tactile iPad
+// 4. CONTRÔLES TACTILES (Simplifiés pour v65)
 window.addEventListener('touchstart', function(e) {
-    var t = e.touches[0];
-    if (t.clientX < window.innerWidth / 2) {
-        moveForward = 0.15; // Avancer si on touche à gauche
+    if (e.touches[0].clientX < window.innerWidth / 2) {
+        moveForward = 0.2; // Avancer
     }
 });
 
 window.addEventListener('touchmove', function(e) {
     var t = e.touches[0];
     if (t.clientX > window.innerWidth / 2) {
-        // Rotation horizontale simplifiée pour éviter les bugs d'inclinaison
-        lookY -= 0.02; 
+        // Rotation droite/gauche
+        lookY -= 0.03;
         camera.rotation.y = lookY;
     }
-    e.preventDefault(); // Empêche la page de trembler
+    e.preventDefault(); 
 }, { passive: false });
 
 window.addEventListener('touchend', function() {
     moveForward = 0;
 });
 
-// --- BOUCLE DE RENDU ---
+// 5. BOUCLE DE RENDU
 function animate() {
     requestAnimationFrame(animate);
     
-    // Mouvement FPS
+    // Déplacement FPS
     if (moveForward > 0) {
         camera.position.z -= Math.cos(camera.rotation.y) * moveForward;
         camera.position.x -= Math.sin(camera.rotation.y) * moveForward;
     }
+    
+    // Animation du cube pour prouver que ça tourne
+    target.rotation.y += 0.02;
 
     renderer.render(scene, camera);
 }
 
-animate();
+// Lancement forcé
+if (typeof THREE !== 'undefined') {
+    animate();
+} else {
+    alert("ERREUR : Three.min.js n'est pas chargé !");
+}
