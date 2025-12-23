@@ -42,7 +42,13 @@
         varying vec4 vColor;
         void main() { gl_FragColor = vColor; }
     </script>
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-    <script src="main.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+</script>
+<script type="module" src="main.js"></script>
 </body>
 </html>

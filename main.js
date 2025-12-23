@@ -1,3 +1,14 @@
+import * as THREE from 'three';
+
+// Garde ton code de debug pour vérifier si l'erreur change
+window.onerror = function(msg, url, line) {
+    const debug = document.createElement('div');
+    debug.style = "position:fixed;top:0;left:0;color:red;background:white;z-index:9999;font-size:12px;";
+    debug.innerHTML = "ERREUR: " + msg + " Ligne: " + line;
+    document.body.appendChild(debug);
+};
+
+// ... la suite de ton code Three.js de l'étape précédente ...
 window.onerror = function(msg, url, line) {
     const debug = document.createElement('div');
     debug.style = "position:fixed;top:0;left:0;color:red;background:white;z-index:9999;font-size:10px;";
