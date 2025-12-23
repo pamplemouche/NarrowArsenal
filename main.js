@@ -1,3 +1,11 @@
+window.onerror = function(msg, url, line) {
+    const debug = document.createElement('div');
+    debug.style = "position:fixed;top:0;left:0;color:red;background:white;z-index:9999;font-size:10px;";
+    debug.innerHTML = "ERREUR: " + msg + " Ligne: " + line;
+    document.body.appendChild(debug);
+};
+console.log("Script lancé !");
+
 // --- INITIALISATION ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb); // Ciel bleu
